@@ -19,8 +19,8 @@ from app.engine.core import Engine
 from app.engine.simulator import SCENARIOS, Simulator
 from app.nlp.models import load_metrics
 
-BACKFILL_HOURS = float(os.environ.get("TP_BACKFILL_HOURS", "3"))
-AUTOSTART_SIM = os.environ.get("TP_SIM", "1") == "1"
+BACKFILL_HOURS = float(os.environ.get("TRANSAFE_BACKFILL_HOURS", "3"))
+AUTOSTART_SIM = os.environ.get("TRANSAFE_SIM", "1") == "1"
 
 engine: Engine
 sim: Simulator
@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
     task.cancel()
 
 
-app = FastAPI(title="TransitPulse - Real-Time Public Transport Complaint Analyzer", lifespan=lifespan)
+app = FastAPI(title="Transafe - Real-Time Public Transport Complaint Analyzer", lifespan=lifespan)
 
 
 class AnalyzeIn(BaseModel):

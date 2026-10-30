@@ -1,4 +1,4 @@
-"""Central configuration and shared constants for TransitPulse."""
+"""Central configuration and shared constants for Transafe."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent

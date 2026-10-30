@@ -1,4 +1,4 @@
-# How TransitPulse works - explainer and viva notes
+# How Transafe works - explainer and viva notes
 
 Read this before presenting. Each section: what it does, the idea, where the code is, and a question you may get.
 

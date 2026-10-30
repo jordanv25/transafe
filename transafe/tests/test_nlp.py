@@ -3,8 +3,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-os.environ.setdefault("TP_BACKFILL_HOURS", "0.5")
-os.environ.setdefault("TP_SIM", "0")
+os.environ.setdefault("TRANSAFE_BACKFILL_HOURS", "0.5")
+os.environ.setdefault("TRANSAFE_SIM", "0")
 
 import pytest
 

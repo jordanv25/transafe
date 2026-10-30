@@ -1,4 +1,4 @@
-# TransitPulse - Real-Time Public Transport Complaint Analyzer
+# Transafe - Real-Time Public Transport Complaint Analyzer
 
 NLP course project (AI53) · Problem 5: *continuously process incoming passenger complaints and generate live issue
 categories, locations, severity levels and emerging trends.*
