@@ -1,36 +1,53 @@
-# CLAUDE.md
+# Transafe
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Real-Time Public Transport Complaint Analyzer. College NLP project (AI53, MSRIT, Bengaluru), Problem 5.
+Goal: process incoming passenger complaints (BMTC bus + Namma Metro) and produce live categories,
+locations, severity levels and emerging trends. Must be a fully working, polished project that earns
+full internal marks and looks strong on a resume. Owner: Jordan.
 
-Transafe is a real-time public-transport complaint analyzer (NLP course project, Bengaluru BMTC/Metro). All code lives in the `transafe/` subdirectory; the repo root only holds a stub `README.md`. The full README is `transafe/README.md`, and `transafe/docs/EXPLAINER.md` explains each component's formulas.
-
-## Commands
-
-Run everything from `transafe/`:
-
-```bash
-pip install -r requirements.txt
-python run.py                      # trains models if models/bundle.joblib is missing, then serves on :8000
-python run.py --retrain            # force retraining (~10 s); also rewrites models/metrics.json
-python run.py --no-browser --port 8001
-python -m pytest -q tests          # full suite (~35 s, includes API tests via TestClient)
-python -m pytest -q tests/test_nlp.py::test_severity_ordering_and_negation   # single test
-```
-
-There is no linter or build step. The frontend is static files served as-is (no bundler).
-
-Environment variables (read in `app/main.py`): `TRANSAFE_SIM=0` stops the simulator autostarting; `TRANSAFE_BACKFILL_HOURS=<n>` sets how much simulated history is generated at startup (default 3, `0` disables). Tests set these to `0.5` / `0`.
+## Run / test
+- `pip install -r requirements.txt`
+- `python run.py` (trains models on first run, ~10 s; serves http://127.0.0.1:8000; `--retrain` forces retraining)
+- `python -m pytest -q tests` (11 tests, must stay green)
+- Env vars: `TRANSAFE_BACKFILL_HOURS` (default 3), `TRANSAFE_SIM` (1 = simulator on)
 
 ## Architecture
+raw text -> normalise -> spell-correct -> classify -> places/routes -> severity -> POS/phrases
+-> cluster + trend engine + BM25 + SQLite -> FastAPI (REST + SSE) -> dashboard.
+- `app/main.py` routes and SSE; `app/engine/` core.py, clustering.py, trends.py, search.py, simulator.py
+- `app/nlp/` preprocess, edit_distance, language_model (MLE/add-1/add-k/Kneser-Ney), spell (noisy channel),
+  pos_tagger (lexicon + suffix + Brill rules), location (gazetteer + fuzzy), severity, models (training/eval), pipeline
+- `app/data/` generator.py (template grammar for synthetic training text), gold_test.py (108 hand-written test
+  complaints, NEVER train on it), gazetteer.py (~50 Bengaluru places, approximate coordinates)
+- `static/` index.html, css/app.css (design tokens at top), js/ (one module per page); Chart.js and Leaflet are vendored
+- `docs/EXPLAINER.md` explains every component, formulas, likely viva questions
 
-One `Engine` instance (`app/engine/core.py`) is created in the FastAPI lifespan (`app/main.py`) and holds all state in memory. `Engine.ingest()` is the single entry point for every complaint, whether from the simulator, `POST /api/complaints`, or CSV upload. Under a lock it runs the NLP `Analyzer` (`app/nlp/pipeline.py`: normalise, spell-correct, classify, extract places and routes, severity, POS and phrases), assigns an incremental cluster (`engine/clustering.py`), feeds the burst detector (`engine/trends.py`), indexes for BM25 (`engine/search.py`), writes to SQLite, and publishes to SSE subscribers. `/api/stream` pushes `complaint` and `incident` events plus a `snapshot` every 2 s; the dashboard JS (`static/js/`, one module per page) consumes these.
+## Current results (python run.py --retrain)
+- 88.0% accuracy / 87.7% macro-F1 on the hand-written test set; Naive Bayes baseline 86.1%
+- 74.4% on held-out synthetic templates (random split is 100% and optimistic; do not quote it)
 
-Things that span files and are easy to miss:
+## Rules for working on this repo
+- Be honest in docs and UI: training data is synthetic, the live feed is simulated, gazetteer coordinates are approximate.
+- Never add gold_test.py examples to training data. New real labelled complaints go into gold_test.py only.
+- After changing NLP code or templates: retrain, run tests, update numbers in README and the Model page text.
+- Keep the 8 category colours in app/config.py (validated palette, fixed order, never cycled).
+- Do not commit models/, *.sqlite3*, __pycache__ (see .gitignore).
+- Syllabus mapping (README) must stay accurate: units I, II, III, V are covered; CYK parsing (III) and machine translation (IV) are not.
 
-- **Virtual time.** `Engine.vtime` is the clock used by trends, clustering and snapshots, not wall-clock time. The simulator (`engine/simulator.py`) advances it at `engine.speed` (1x-600x), and `ingest(..., ts=)` accepts explicit timestamps for backfill. Use `vtime` for anything time-windowed.
-- **Models are trained, not checked in.** `app/nlp/models.py::train_all` builds `models/bundle.joblib` (TF-IDF + logistic regression, naive Bayes baseline, n-gram language model, LSA `SemanticSpace`) and `models/metrics.json` from synthetic text produced by `app/data/generator.py` (a template grammar with noise injection). `models/` is gitignored; the bundle loader in `models.py` trains it automatically if it is missing, so a fresh clone works for both `run.py` and the tests (the first run is slower).
-- **Evaluation data.** `app/data/gold_test.py::GOLD` is the hand-written test set that is never trained on. The accuracy numbers shown in the UI and README come from it. Changing generator templates after inspecting gold errors inflates the numbers, so be upfront about that.
-- **Fresh DB per start.** `Engine(fresh_db=True)` deletes `data_store.sqlite3` on startup. The SQLite log is write-only; queries are served from in-memory structures.
-- **Shared constants.** Categories, labels, colours, severity thresholds and sources are defined once in `app/config.py` and are exposed to the frontend through `/api/meta`. A new category also needs training templates in `app/data/generator.py` and a prior in `app/nlp/severity.py`.
-- **Internal fields.** Analyzer output carries an `_emb` vector that must be popped before returning or serialising (`Engine.ingest` and `main._clean` do this); `Engine.public()` whitelists the fields sent to clients.
-- **Location data** (`app/data/gazetteer.py`) drives both fuzzy place extraction and the map coordinates returned by `/api/meta`.
+## Known limitations
+- Synthetic training data; real-world accuracy unverified. Safety is the weakest class (about 76% F1).
+- Severity is rule-based (no labelled severity data). Small gazetteer. Romanised Hindi/Kannada only, no native scripts.
+- Spell corrector skips words shorter than 4 letters and may mis-correct unseen romanised Hindi/Kannada words.
+- Kneser-Ney perplexity is worse than add-1 on the out-of-domain hand-written set (explained in docs).
+
+## Roadmap (priority order)
+1. UI restyle per Jordan's instructions (tokens in static/css/app.css; layout is plain CSS grid).
+2. Collect 200+ real complaints (public tweets / grievance posts), label, add to gold_test.py, report new accuracy.
+3. Adapters to ingest real feeds into POST /api/complaints (X, WhatsApp webhook, portal export).
+4. Optional syllabus extras: CYK parser for complaint structure (Unit III), Kannada/Hindi translation (Unit IV).
+5. Docker file, CI running pytest, screenshots and a demo GIF in the README for the resume.
+6. Final presentation: live demo flow is Inject incident -> Emerging trends -> NLP Analyzer -> Model page.
+
+## Preferences
+- Jordan is a student; explain choices simply and keep code readable (it must be explainable in a viva).
+- Prefer small, tested changes; show the diff summary and test results after each change.
