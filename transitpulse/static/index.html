@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TransitPulse · Real-Time Public Transport Complaint Analyzer</title>
+<link rel="stylesheet" href="/static/vendor/leaflet.css">
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M3 12h4l2-6 4 12 2-6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div><b>TransitPulse</b><span>Public Transport Complaint Analyzer</span></div>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button data-page="dashboard" class="active">Live Dashboard</button>
+    <button data-page="issues">Recurring Issues</button>
+    <button data-page="analyzer">NLP Analyzer</button>
+    <button data-page="model">Model &amp; Evaluation</button>
+  </nav>
+  <div class="controls">
+    <span class="live" id="livePill"><i></i><span id="liveText">connecting</span></span>
+    <span class="clock" id="simClock" title="Simulated clock">--:--</span>
+    <button id="btnPlay" class="btn icon" title="Pause / resume stream">❚❚</button>
+    <select id="selSpeed" title="Simulation speed">
+      <option value="1">1×</option><option value="10">10×</option><option value="30" selected>30×</option>
+      <option value="60">60×</option><option value="120">120×</option><option value="300">300×</option>
+    </select>
+    <select id="selIncident" title="Inject an incident"></select>
+    <button id="btnIncident" class="btn accent">Inject</button>
+  </div>
+</header>
+
+<main>
+<!-- ============ DASHBOARD ============ -->
+<section id="page-dashboard" class="page active">
+  <div class="kpis" id="kpis"></div>
+  <div class="grid">
+    <div class="card map-card"><div class="card-h"><h2>Complaint hotspots <small>last hour · size = volume · colour = top category</small></h2><div class="legend" id="mapLegend"></div></div><div id="map"></div></div>
+    <div class="card emerging"><div class="card-h"><h2>Emerging trends <small>burst detection</small></h2><span class="tag" id="calibTag" hidden>calibrating</span></div><div id="emergingList" class="list"></div></div>
+    <div class="card timeline"><div class="card-h"><h2>Complaints over time <small>10-min buckets</small></h2></div><div class="chart-box"><canvas id="chTimeline"></canvas></div></div>
+    <div class="card cats"><div class="card-h"><h2>Categories <small>last hour</small></h2></div><div class="donut-wrap"><div class="chart-box sm"><canvas id="chDonut"></canvas></div><div id="catLegend" class="cat-legend"></div></div></div>
+    <div class="card feed"><div class="card-h"><h2>Live complaint feed</h2><select id="feedFilter"><option value="">All categories</option></select></div><div id="feedList" class="feed-list"></div></div>
+    <div class="card issues-top"><div class="card-h"><h2>Top recurring issues <small>ranked by severity-weighted volume</small></h2><a href="#" data-goto="issues">View all →</a></div><div id="topIssues" class="list"></div></div>
+  </div>
+</section>
+
+<!-- ============ ISSUES ============ -->
+<section id="page-issues" class="page">
+  <div class="card">
+    <div class="card-h"><h2>Recurring issues <small>complaints grouped by category, place and meaning</small></h2></div>
+    <div class="toolbar">
+      <input id="issueQ" type="search" placeholder="Search issues or complaints (BM25), e.g. “ac not working”, “silk board”…">
+      <select id="issueCat"><option value="">All categories</option></select>
+    </div>
+    <div id="searchResults" class="list" hidden></div>
+    <div class="table-wrap"><table class="tbl" id="issueTable"><thead><tr><th>Issue</th><th>Category</th><th class="num">Complaints</th><th class="num">Last hour</th><th>Trend</th><th>Severity</th><th>Where</th><th>Last seen</th></tr></thead><tbody></tbody></table></div>
+  </div>
+</section>
+
+<!-- ============ ANALYZER ============ -->
+<section id="page-analyzer" class="page">
+  <div class="card">
+    <div class="card-h"><h2>NLP pipeline inspector <small>paste any complaint and watch every stage</small></h2></div>
+    <textarea id="azText" rows="3" placeholder="e.g. Bus 335E broke dwn near Silk Bord, stuck for 45 mins, women and kids stranded. pls help!!"></textarea>
+    <div class="chips" id="azExamples"></div>
+    <div class="row">
+      <button id="azRun" class="btn accent">Analyze</button>
+      <button id="azSend" class="btn">Send to live stream</button>
+      <label class="btn file">Upload CSV<input id="azCsv" type="file" accept=".csv" hidden></label>
+      <span class="muted" id="azStatus"></span>
+    </div>
+  </div>
+  <div id="azResult" class="az-grid" hidden></div>
+</section>
+
+<!-- ============ MODEL ============ -->
+<section id="page-model" class="page"><div id="modelRoot"></div></section>
+</main>
+
+<aside id="drawer" class="drawer" aria-hidden="true"><div class="drawer-in"><button class="btn icon close" id="drawerClose">✕</button><div id="drawerBody"></div></div></aside>
+<div id="toasts"></div>
+
+<script src="/static/vendor/leaflet.js"></script>
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script type="module" src="/static/js/main.js"></script>
+</body>
+</html>
