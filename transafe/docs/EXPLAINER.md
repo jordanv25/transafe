@@ -16,6 +16,11 @@ Edit distance D(i,j) = min( D(i-1,j)+1, D(i,j-1)+1, D(i-1,j-1)+[a_i≠b_j] ), pl
 channel model:  ŵ = argmax_w P(w | context) · P(x | w), with P(x|w) ∝ exp(-α·d(x,w)) and P(w|context) from the bigram
 language model. Common English words (30k list) and place names are protected so they are never "corrected".
 *Q: why use the LM at all?* "buss" is distance 1 from both "bus" and "buns"; the context ("the buss was late") decides.
+*Q: how do you show it works?* The **Noise** slider on the NLP Analyzer page runs the training-data noise generator
+(`add_noise` in `data/generator.py`: random deletions, swaps, substitutions, duplicated letters) on your text before
+analysis, with a fixed seed so the same typos stay while you drag the slider. Noise N% means about N% of the words get a
+typo. The page shows noisy and corrected text side by side. At 100% most words are repaired but not all (short words under
+4 letters are skipped, and "dwn" can survive), so it also shows the limit honestly.
 
 ## 3. N-gram language model and smoothing (`nlp/language_model.py`)
 P(w_i | w_{i-1}) = c(w_{i-1} w_i) / c(w_{i-1}) gives zero to unseen pairs, so perplexity is infinite. We implement
@@ -36,9 +41,14 @@ dropping one in.
 ## 5. Classification (`nlp/models.py`)
 Features: TF-IDF of word 1-2-grams and character 2-5-grams (characters make it robust to typos and code-mixing).
 Model: multinomial logistic regression, softmax P(c|x) = exp(w_c·x)/Σ exp(w_k·x). Naive Bayes is trained as a baseline.
-Evaluation: (a) random split - optimistic, (b) held-out templates, (c) 108 hand-written complaints. Report (c).
+Evaluation: (a) random split - optimistic, (b) held-out templates, (c) 108 hand-written complaints (88.0% / 87.7%),
+(d) a second hand-written batch of 117 (85.5%) whose errors were not used to tune the templates. Report (c) and (d).
 *Q: your data is synthetic - is the accuracy real?* Say plainly: it is an estimate on hand-written text; the next step is
 real labelled data. The generator is a template grammar (Unit III) with injected noise.
+*Q: can it learn from real complaints?* Yes: `scripts/import_csv.py` stores labelled complaints in
+`app/data/real_labeled.csv`, and `train_all` adds them to the final classifier when the file exists (the language model
+and spell-checker vocabulary stay synthetic-only, because real posts contain typos the spell-checker would then accept).
+Any text that is also in a test set is dropped before training, so the test sets stay unseen.
 
 ## 6. Entities (`nlp/location.py`)
 A gazetteer of ~50 Bengaluru places with aliases. Longest-match over token n-grams, then fuzzy match using edit distance
@@ -61,10 +71,18 @@ Each complaint gets an LSA vector (TF-IDF → truncated SVD, 64 dims) - a distri
 issue. Clusters close after 6 hours of silence. Priority = severity-weighted volume in the last hour, boosted by growth.
 
 ## 9. Trend / burst detection (`engine/trends.py`)
-For an entity (category, place, route, category@place) compare the count in the last 30 min (observed O) with the rate
-expected from the previous 3 hours: E = baseline_count · 30 / baseline_span. z = (O − E)/√(E + 0.5) (Poisson
-approximation). Emerging when O ≥ 4 and z ≥ 2.5. A cold-start flag shows "calibrating" until 30 min of history exist.
+For an entity (category, place, route, category@place) compare the count in the last 30 min (observed O) with the
+expected count E. z = (O − E)/√(E + 0.5) (Poisson approximation). Emerging when O ≥ 4 and z ≥ 2.5. A cold-start flag
+shows "calibrating" until 30 min of history exist.
+
+E is **time-of-day aware**: once the log holds at least 2 previous days, E is the average count of the same 30-minute
+slot on each of those days (the window shifted back by 24 h, 48 h, ...). A normal morning or evening rush then matches
+its own history. With less than 2 days of history (a fresh start, or the demo's 3-hour backfill) E falls back to the
+previous 3 hours: E = baseline_count · 30 / baseline_span, which mistakes a normal rush-hour ramp-up for a burst.
 *Q: why not a threshold on counts?* Rush hour makes counts high every day; comparing with expected volume avoids false alarms.
+*Q: do false alarms disappear?* The systematic one (rush-hour ramp-up) does. Random ones remain: many entities are tested
+every few seconds, and an average over 2-6 days is itself noisy, so a Poisson z-score of 2.5 still fires by chance now and then.
+Weekdays and weekends are not separated yet.
 
 ## 10. Search (`engine/search.py`)
 Okapi BM25: score(q,d) = Σ_t IDF(t) · tf·(k1+1) / (tf + k1(1 − b + b·|d|/avgdl)), k1=1.5, b=0.75. The query goes through the

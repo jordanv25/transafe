@@ -6,6 +6,7 @@ import csv
 import io
 import json
 import os
+import random
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
@@ -13,30 +14,53 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app.config import ACTIONABLE, CATEGORIES, CATEGORY_COLORS, CATEGORY_LABELS, SOURCES, STATIC_DIR
+from app.config import (ACTIONABLE, CATEGORIES, CATEGORY_COLORS, CATEGORY_LABELS, GOOGLE_MAPS_API_KEY, SOURCES,
+                        STATIC_DIR)
 from app.data.gazetteer import PLACES
+from app.data.generator import add_noise
 from app.engine.core import Engine
 from app.engine.simulator import SCENARIOS, Simulator
+from app.ingest.runner import poll_forever
+from app.ingest.sources import configured_sources
 from app.nlp.models import load_metrics
 
-BACKFILL_HOURS = float(os.environ.get("TRANSAFE_BACKFILL_HOURS", "3"))
+# 50 h of history means >= 2 whole days, which switches the trend detector to its time-of-day baseline
+BACKFILL_HOURS = float(os.environ.get("TRANSAFE_BACKFILL_HOURS", "50"))
+SIM_SEED = int(os.environ.get("TRANSAFE_SEED", "11"))             # random seed of the simulator
 AUTOSTART_SIM = os.environ.get("TRANSAFE_SIM", "1") == "1"
+LIVE_ALLOWED = os.environ.get("TRANSAFE_LIVE", "1") == "1"      # TRANSAFE_LIVE=0 forces simulator mode
 
 engine: Engine
 sim: Simulator
+live = False                      # True when real feeds are polled instead of the simulator
+source_status: list[dict] = []    # one entry per live source, filled by the pollers
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global engine, sim
+    """Live mode (any X / Reddit credentials set): real-time clock, real posts only, no synthetic data.
+    Otherwise: the simulator with a backfilled history."""
+    global engine, sim, live
     engine = Engine()
-    sim = Simulator(engine)
-    if BACKFILL_HOURS > 0:
-        await asyncio.to_thread(sim.backfill, BACKFILL_HOURS)
-    engine.running = AUTOSTART_SIM
-    task = asyncio.create_task(sim.run())
+    sim = Simulator(engine, seed=SIM_SEED)
+    sources = configured_sources() if LIVE_ALLOWED else []
+    live = bool(sources)
+    source_status.clear()
+    tasks = []
+    if live:
+        engine.speed = 1.0
+        tasks.append(asyncio.create_task(sim.run_live()))
+        for s in sources:
+            source_status.append({})
+            tasks.append(asyncio.create_task(poll_forever(engine, s, source_status[-1])))
+    else:
+        if BACKFILL_HOURS > 0:
+            await asyncio.to_thread(sim.backfill, BACKFILL_HOURS)
+        engine.running = AUTOSTART_SIM
+        tasks.append(asyncio.create_task(sim.run()))
     yield
-    task.cancel()
+    for t in tasks:
+        t.cancel()
 
 
 app = FastAPI(title="Transafe - Real-Time Public Transport Complaint Analyzer", lifespan=lifespan)
@@ -44,6 +68,8 @@ app = FastAPI(title="Transafe - Real-Time Public Transport Complaint Analyzer", 
 
 class AnalyzeIn(BaseModel):
     text: str = Field(..., min_length=1, max_length=1000)
+    noise: float = Field(0, ge=0, le=100)         # % of words that get a typo before analysis (0 = text unchanged)
+    seed: int | None = None                       # same seed + same text + same noise = same typos
 
 
 class ComplaintIn(BaseModel):
@@ -71,7 +97,7 @@ def _clean(a: dict) -> dict:
 @app.get("/api/meta")
 def meta():
     return {"categories": [{"key": c, "label": CATEGORY_LABELS[c], "color": CATEGORY_COLORS[c]} for c in CATEGORIES],
-            "actionable": ACTIONABLE, "sources": SOURCES,
+            "actionable": ACTIONABLE, "sources": SOURCES, "live": live, "maps_key": GOOGLE_MAPS_API_KEY,
             "places": {p[0]: {"lat": p[2], "lng": p[3]} for p in PLACES},
             "scenarios": [{"key": k, "name": v["name"], "locations": v["locs"]} for k, v in SCENARIOS.items()]}
 
@@ -83,8 +109,18 @@ def state():
 
 @app.post("/api/analyze")
 def analyze(body: AnalyzeIn):
-    """Run the full NLP pipeline on a text with a detailed trace (nothing is stored)."""
-    return _clean(engine.analyzer.analyze(body.text, trace=True))
+    """Run the full NLP pipeline on a text with a detailed trace (nothing is stored).
+
+    With noise > 0 the text first goes through the generator's add_noise() (typos, slang, odd case), so the
+    spell-corrector can be shown working: `original` is what was sent, `noisy_text` is what was analysed.
+    """
+    noisy = body.text
+    if body.noise > 0:
+        # add_noise gives each word a typo with probability p_typo * 0.15, so noise 100 % -> p_typo 6.67 -> every word
+        noisy = add_noise(body.text, random.Random(body.seed), p_typo=body.noise / 15)
+    out = _clean(engine.analyzer.analyze(noisy, trace=True))
+    out.update(original=body.text, noisy_text=noisy, noise=body.noise)
+    return out
 
 
 @app.post("/api/complaints")
@@ -147,8 +183,16 @@ def simulator(body: SimIn):
     return {"running": engine.running, "speed": engine.speed, "auto_incidents": sim.auto_incidents}
 
 
+@app.get("/api/sources")
+def sources():
+    """Health of the live feeds (empty in simulator mode)."""
+    return {"live": live, "sources": source_status}
+
+
 @app.post("/api/simulator/incident")
 def incident(body: IncidentIn):
+    if live:
+        raise HTTPException(409, "incidents can only be injected in simulator mode")
     if body.kind not in SCENARIOS:
         raise HTTPException(400, f"unknown scenario; choose from {list(SCENARIOS)}")
     return sim.trigger(body.kind, body.location) | {"mix": None}

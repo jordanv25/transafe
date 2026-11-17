@@ -40,6 +40,8 @@ export async function loadModel() {
     <div class="card"><h3>Classifier comparison</h3><table class="tbl"><thead><tr><th>Evaluation</th><th class="num">Accuracy</th><th class="num">Macro-F1</th></tr></thead><tbody>
       <tr><td>Logistic regression · hand-written test</td><td class="num"><b>${pct(m.gold_lr.accuracy)}</b></td><td class="num">${pct(m.gold_lr.macro_f1)}</td></tr>
       <tr><td>Naive Bayes baseline · hand-written test</td><td class="num">${pct(m.gold_nb.accuracy)}</td><td class="num">${pct(m.gold_nb.macro_f1)}</td></tr>
+      ${m.gold_new_lr ? `<tr><td>Logistic regression · second hand-written batch (n=${m.gold_new_lr.n})</td><td class="num"><b>${pct(m.gold_new_lr.accuracy)}</b></td><td class="num">${pct(m.gold_new_lr.macro_f1)}</td></tr>
+      <tr><td>Naive Bayes baseline · second batch</td><td class="num">${pct(m.gold_new_nb.accuracy)}</td><td class="num">${pct(m.gold_new_nb.macro_f1)}</td></tr>` : ''}
       <tr><td>Logistic regression · unseen templates</td><td class="num">${pct(m.template_holdout.accuracy)}</td><td class="num">${pct(m.template_holdout.macro_f1)}</td></tr>
       <tr><td>Logistic regression · random split*</td><td class="num">${pct(m.random_split.accuracy)}</td><td class="num">${pct(m.random_split.macro_f1)}</td></tr></tbody></table>
       <p class="muted">*Random split shares phrase templates between train and test, so it is optimistic. The hand-written set is the honest number. Training data is synthetic (generated from templates), so real-world accuracy needs validation on real complaints.</p></div>

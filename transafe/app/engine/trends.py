@@ -1,11 +1,18 @@
 """Streaming trend / burst detection.
 
 For an entity (category, location, route, or category@location) we compare the
-number of complaints in the recent window W with the rate expected from a
-longer baseline window B:
-        expected = baseline_count * W / B
-        z        = (observed - expected) / sqrt(expected + 0.5)      (Poisson z-score)
+number of complaints in the recent window W (the last 30 minutes) with an
+expected count:
+        z = (observed - expected) / sqrt(expected + 0.5)      (Poisson z-score)
 An entity is "emerging" when observed >= MIN_OBS and z >= Z_THRESHOLD.
+
+Expected count (time-of-day aware):
+  * If the log holds at least MIN_DAYS previous days, expected = the average count
+    in the same 30-minute slot on each of those days (the window shifted back by
+    1, 2, 3 ... whole days).  A normal morning or evening rush therefore matches
+    its own history and does not raise an alert.
+  * Otherwise (a fresh log) fall back to the previous 3 hours:
+        expected = baseline_count * W / B
 """
 from __future__ import annotations
 
@@ -16,6 +23,8 @@ from app.config import ACTIONABLE, CATEGORY_LABELS
 
 RECENT = 30 * 60.0
 BASELINE = 3 * 3600.0
+DAY = 86400.0
+MIN_DAYS = 2          # previous days needed before the same-slot baseline is trusted
 MIN_OBS = 4
 Z_THRESHOLD = 2.5
 
@@ -58,11 +67,30 @@ class TrendEngine:
             ks.append(("route", rt, f"Route {rt}" if not rt.endswith("Line") else rt))
         return ks
 
+    def slot_days(self, now: float) -> int:
+        """Number of previous days whose same 30-minute slot lies fully inside the log."""
+        if not self.events:
+            return 0
+        return max(0, int((now - RECENT - self.events[0][0]) // DAY))
+
+    def _same_slot_events(self, now: float, days: int):
+        """Events from the window (now-RECENT, now] shifted back by 1..days whole days."""
+        out = []
+        for e in self.events:
+            age = now - e[0]
+            if age >= DAY and age % DAY < RECENT and age // DAY <= days:
+                out.append(e)
+        return out
+
     def emerging(self, now: float, limit=8):
         recent = self._window(now - RECENT, now)
-        base = self._window(now - RECENT - BASELINE, now - RECENT)
         warm = (self.t_first is not None) and (now - self.t_first >= 1800)
         base_span = min(BASELINE, max(now - RECENT - (self.t_first or now), 1.0))
+        days = self.slot_days(now)
+        if days >= MIN_DAYS:        # time-of-day aware: average of the same slot on earlier days
+            base, scale = self._same_slot_events(now, days), 1.0 / days
+        else:                       # fresh log: fall back to the previous 3 hours
+            base, scale = self._window(now - RECENT - BASELINE, now - RECENT), RECENT / base_span
         rc, bc, sev, meta = Counter(), Counter(), Counter(), {}
         for e in recent:
             for k in self._keys(e):
@@ -76,7 +104,7 @@ class TrendEngine:
         for key, obs in rc.items():
             if obs < MIN_OBS:
                 continue
-            expected = bc.get(key, 0) * RECENT / base_span
+            expected = bc.get(key, 0) * scale
             z = (obs - expected) / math.sqrt(expected + 0.5)
             if z >= Z_THRESHOLD:
                 kind, name = key

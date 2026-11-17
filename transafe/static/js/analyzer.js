@@ -14,9 +14,12 @@ const lvl = (v) => (v >= 78 ? 'critical' : v >= 55 ? 'high' : v >= 30 ? 'medium'
 
 export function initAnalyzer() {
   $('#azExamples').innerHTML = EXAMPLES.map((e, i) => `<span class="chip" data-i="${i}">${esc(e.slice(0, 44))}…</span>`).join('');
-  $('#azExamples').onclick = (e) => { const c = e.target.closest('.chip'); if (c) { $('#azText').value = EXAMPLES[+c.dataset.i]; run(); } };
-  $('#azRun').onclick = run;
-  $('#azText').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) run(); });
+  $('#azExamples').onclick = (e) => { const c = e.target.closest('.chip'); if (c) { $('#azText').value = EXAMPLES[+c.dataset.i]; run(true); } };
+  $('#azRun').onclick = () => run(true);                       // Analyze draws a fresh set of typos
+  $('#azText').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) run(true); });
+  // moving the slider keeps the same typo seed, so the typos change smoothly instead of being re-rolled
+  let timer;
+  $('#azNoise').oninput = () => { $('#azNoiseVal').textContent = $('#azNoise').value + '%'; clearTimeout(timer); timer = setTimeout(() => run(false), 200); };
   $('#azSend').onclick = async () => {
     const text = $('#azText').value.trim(); if (!text) return;
     const c = await api('/api/complaints', { method: 'POST', body: { text, source: 'Manual Entry' } });
@@ -29,14 +32,37 @@ export function initAnalyzer() {
     catch (err) { $('#azStatus').textContent = 'Upload failed: ' + err.message; }
     e.target.value = '';
   };
-  document.addEventListener('analyze-text', (e) => { document.querySelector('[data-page=analyzer]').click(); $('#azText').value = e.detail; run(); });
+  document.addEventListener('analyze-text', (e) => { document.querySelector('[data-page=analyzer]').click(); $('#azText').value = e.detail; run(true); });
 }
 
-async function run() {
+let seed = 1;
+async function run(reseed = true) {
   const text = $('#azText').value.trim(); if (!text) return;
+  if (reseed) seed = Math.floor(Math.random() * 2 ** 31);
   $('#azStatus').textContent = 'Analyzing…';
-  try { render(await api('/api/analyze', { method: 'POST', body: { text } })); $('#azStatus').textContent = ''; }
+  try { render(await api('/api/analyze', { method: 'POST', body: { text, noise: +$('#azNoise').value, seed } })); $('#azStatus').textContent = ''; }
   catch (e) { $('#azStatus').textContent = 'Error: ' + e.message; }
+}
+
+// word-level comparison; add_noise keeps the number of words, so words can be compared by position
+function noisyHtml(r) {
+  const was = r.original.split(' '), now = r.noisy_text.split(' ');
+  let changed = 0;
+  const html = now.map((w, i) => {
+    const diff = was[i] !== undefined && w.toLowerCase() !== was[i].toLowerCase();
+    if (diff) changed++;
+    return diff ? `<span class="tok noisy" title="was: ${esc(was[i])}">${esc(w)}</span>` : `<span class="tok">${esc(w)}</span>`;
+  }).join('');
+  return { html, changed };
+}
+
+function sideBySide(r, fixed) {
+  const n = noisyHtml(r);
+  const fixedHtml = r.tokens.map((t, i) => fixed.has(i) ? `<span class="tok fixed" title="was: ${esc(fixed.get(i).from)}">${esc(t)}</span>` : `<span class="tok">${esc(t)}</span>`).join('');
+  return `<div class="side-by-side">
+      <div><h4>Noisy text · noise ${r.noise}%</h4><div class="box">${n.html}</div></div>
+      <div><h4>After normalisation &amp; spell correction</h4><div class="box">${fixedHtml}</div></div></div>
+    <div class="muted" style="margin-top:6px">Noise altered ${n.changed} word${n.changed === 1 ? '' : 's'} (orange); the spell-checker corrected ${r.corrections.length} (green).${r.noise ? ' Case changes and slang such as “pls” are normalised separately.' : ''}</div>`;
 }
 
 function render(r) {
@@ -50,7 +76,7 @@ function render(r) {
   $('#azResult').hidden = false;
   $('#azResult').innerHTML = `
   <div class="card wide"><h3>1 · Normalisation &amp; spelling correction <span class="muted" style="text-transform:none">(min edit distance + n-gram LM)</span></h3>
-    <div class="muted" style="margin-bottom:6px">Raw: ${esc(r.raw)}</div><div>${toks}</div>
+    ${r.noise ? sideBySide(r, fixed) : `<div class="muted" style="margin-bottom:6px">Raw: ${esc(r.raw)}</div><div>${toks}</div>`}
     ${r.corrections.length ? `<div class="muted" style="margin-top:8px">${r.corrections.map((c) => `<code>${esc(c.from)}</code> → <code>${esc(c.to)}</code> (distance ${c.distance}: ${c.ops.map((o) => o.op === 'match' ? o.a : o.op === 'sub' ? `<b>${o.a}→${o.b}</b>` : o.op === 'del' ? `<b>−${o.a}</b>` : `<b>+${o.b}</b>`).join('')})`).join(' &nbsp;·&nbsp; ')}</div>` : ''}
     ${r.code_mixed.length ? `<div style="margin-top:8px"><span class="tag">Code-mixed: ${r.code_mixed.map((x) => x === 'hi' ? 'Hindi (romanised)' : 'Kannada (romanised)').join(' + ')}</span> <span class="muted">${r.trace.code_mix_hits.map((h) => esc(h.token) + '=' + esc(h.gloss)).join(', ')}</span></div>` : ''}</div>
   <div class="card"><h3>2 · Part-of-speech &amp; key phrases</h3><div>${pos}</div><div style="margin-top:8px"><span class="muted">Issue phrases:</span> ${r.phrases.map((p) => `<span class="tag">${esc(p)}</span>`).join(' ') || '—'}</div></div>

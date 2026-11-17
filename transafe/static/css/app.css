@@ -108,6 +108,14 @@ textarea { width: 100%; resize: vertical; margin-bottom: 8px; font-size: 15px; }
 .tok sub { color: var(--muted); font-size: 10px; margin-left: 4px; }
 .tok.fixed { background: rgba(25,158,112,.18); border: 1px solid rgba(25,158,112,.5); }
 .tok.fixed s { color: #ff9a9a; margin-right: 4px; }
+.tok.noisy { background: rgba(217,89,38,.18); border: 1px solid rgba(217,89,38,.5); }
+.noise { display: inline-flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 13px; margin-left: 6px; }
+.noise input { width: 150px; accent-color: var(--accent); }
+.noise output { min-width: 34px; font-variant-numeric: tabular-nums; color: var(--text); }
+.side-by-side { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); margin-top: 6px; }
+.side-by-side h4 { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+.side-by-side .box { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; line-height: 1.9; word-break: break-word; }
+@media (max-width: 760px) { .side-by-side { grid-template-columns: 1fr; } }
 .kv { display: grid; grid-template-columns: 130px 1fr; gap: 6px 10px; font-size: 13px; } .kv dt { color: var(--muted); } .kv dd { margin: 0; }
 .pbar { display: grid; grid-template-columns: 150px 1fr 48px; gap: 8px; align-items: center; margin: 5px 0; font-size: 12.5px; }
 .pbar .tr { background: #0d1117; border-radius: 4px; height: 10px; overflow: hidden; } .pbar .tr i { display: block; height: 100%; border-radius: 4px; }

@@ -1,12 +1,11 @@
 import { $, S, esc, fmtClock, ago, sevPill, catDot, catName, spark, feedItem, api } from './core.js';
 import { openIssue } from './issues.js';
+import { createMap } from './map.js';
 
-let map, layer, chTimeline, chDonut;
+let map, chTimeline, chDonut;
 
-export function initDashboard() {
-  map = L.map('map', { zoomControl: true, attributionControl: true }).setView([12.9716, 77.5946], 11);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap contributors' }).addTo(map);
-  layer = L.layerGroup().addTo(map);
+export async function initDashboard() {
+  map = await createMap($('#map'), S.meta.maps_key);
   Chart.defaults.color = '#aab5c4'; Chart.defaults.borderColor = '#263041'; Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
 
   chTimeline = new Chart($('#chTimeline'), {
@@ -37,7 +36,7 @@ export function fillFilters() {
 
 export function renderSnapshot(s) {
   S.snap = s;
-  $('#simClock').textContent = fmtClock(s.now) + ' · ' + s.speed + '×';
+  $('#simClock').textContent = S.meta.live ? fmtClock(s.now) : fmtClock(s.now) + ' · ' + s.speed + '×';
   $('#btnPlay').textContent = s.running ? '❚❚' : '▶';
   renderKpis(s); renderMap(s); renderEmerging(s); renderTimeline(s); renderDonut(s); renderTopIssues(s);
 }
@@ -57,15 +56,15 @@ function renderKpis(s) {
 }
 
 function renderMap(s) {
-  layer.clearLayers();
+  if (!map) return;
+  const spots = [];
   for (const h of s.hotspots) {
     const loc = (S.places || {})[h.name]; if (!loc) continue;
-    const color = S.colors[h.top_category];
-    const r = 7 + Math.sqrt(h.count) * 3.2;
-    const m = L.circleMarker([loc.lat, loc.lng], { radius: r, color: h.avg_severity >= 55 ? '#fff' : color, weight: h.avg_severity >= 55 ? 2 : 1, fillColor: color, fillOpacity: 0.55 }).addTo(layer);
     const rows = Object.entries(h.categories).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${catDot(c)}${esc(catName(c))}: <b>${n}</b>`).join('<br>');
-    m.bindTooltip(`<b>${esc(h.name)}</b><br>${h.count} complaints · avg severity ${h.avg_severity}<br>${rows}`);
+    spots.push({ lat: loc.lat, lng: loc.lng, count: h.count, color: S.colors[h.top_category], strong: h.avg_severity >= 55,
+      html: `<b>${esc(h.name)}</b><br>${h.count} complaints · avg severity ${h.avg_severity}<br>${rows}` });
   }
+  map.draw(spots);
 }
 
 function renderEmerging(s) {

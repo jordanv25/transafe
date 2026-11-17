@@ -1,0 +1,11 @@
+# never bake secrets, local state or caches into the image
+.env
+models/
+*.sqlite3
+*.sqlite3-journal
+__pycache__/
+*.pyc
+.pytest_cache/
+.git/
+# not needed at run time
+docs/

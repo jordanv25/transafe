@@ -3,3 +3,6 @@
 __pycache__/
 *.pyc
 models/
+.env
+# real labelled complaints may be third-party posts; commit only if you are allowed to share them
+real_labeled.csv

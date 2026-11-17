@@ -30,7 +30,11 @@ async function boot() {
   S.meta = meta; S.places = meta.places;
   for (const c of meta.categories) { S.colors[c.key] = c.color; S.labels[c.key] = c.label; }
   $('#selIncident').innerHTML = meta.scenarios.map((s) => `<option value="${s.key}">${esc(s.name)}</option>`).join('');
-  initDashboard(); fillFilters(); initIssues(); initAnalyzer();
+  if (meta.live) {          // real feeds: there is no simulated clock, speed or incidents to control
+    ['#btnPlay', '#selSpeed', '#selIncident', '#btnIncident'].forEach((s) => { $(s).hidden = true; });
+    $('#simClock').title = 'Current time';
+  }
+  await initDashboard(); fillFilters(); initIssues(); initAnalyzer();
   $('#tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) showPage(b.dataset.page); };
   document.addEventListener('click', (e) => { const a = e.target.closest('[data-goto]'); if (a) { e.preventDefault(); showPage(a.dataset.goto); } });
   $('#btnPlay').onclick = async () => { const r = await api('/api/simulator', { method: 'POST', body: { running: !S.snap.running } }); $('#btnPlay').textContent = r.running ? '❚❚' : '▶'; };

@@ -22,7 +22,8 @@ from sklearn.pipeline import FeatureUnion, Pipeline
 
 from app.config import CATEGORIES, MODEL_DIR
 from app.data.generator import build_dataset
-from app.data.gold_test import GOLD
+from app.data.gold_test import GOLD, GOLD_NEW
+from app.data.real_data import load_real
 from app.nlp.language_model import NGramLM
 from app.nlp.preprocess import normalize
 
@@ -64,8 +65,18 @@ def train_all(n_per_class=700, seed=7, verbose=True):
     clean_tokens = [normalize(r["clean"]).tokens for r in rows]
     gold_X = [_norm_text(t) for _, t in GOLD]
     gold_y = [l for l, _ in GOLD]
+    gold_new_X = [_norm_text(t) for _, t in GOLD_NEW]
+    gold_new_y = [l for l, _ in GOLD_NEW]
+    # Optional real labelled complaints (app/data/real_labeled.csv, made by scripts/import_csv.py). They are added
+    # to the FINAL classifier only. The two synthetic-data evaluations below stay synthetic-only, and the language
+    # model / spell-checker vocabulary stay synthetic-only too: real posts contain typos that would teach the
+    # spell-checker to accept them. Texts that also occur in the test sets are dropped by load_real().
+    real = load_real()
+    real_X = [_norm_text(r["text"]) for r in real]
+    real_y = [r["label"] for r in real]
     metrics = {"dataset": {"train_examples": len(rows), "per_class": {c: y.count(c) for c in CATEGORIES},
-                           "gold_examples": len(GOLD), "classes": CATEGORIES,
+                           "real_examples": len(real), "real_per_class": {c: real_y.count(c) for c in CATEGORIES},
+                           "gold_examples": len(GOLD), "gold_new_examples": len(GOLD_NEW), "classes": CATEGORIES,
                            "templates": sum(len(set(r["template_id"] for r in rows if r["category"] == c)) for c in CATEGORIES)}}
 
     # --- 1. random split (optimistic: shares templates between train & test)
@@ -88,11 +99,14 @@ def train_all(n_per_class=700, seed=7, verbose=True):
     m = make_classifier("lr").fit([X[i] for i in tr], [y[i] for i in tr])
     metrics["template_holdout"] = _report([y[i] for i in te], list(m.predict([X[i] for i in te])))
 
-    # --- 3. final model on all data, evaluated on the hand-written gold set
-    lr = make_classifier("lr").fit(X, y)
-    nb = make_classifier("nb").fit(X, y)
+    # --- 3. final model on all data (synthetic + real if available), evaluated on the hand-written test sets
+    lr = make_classifier("lr").fit(X + real_X, y + real_y)
+    nb = make_classifier("nb").fit(X + real_X, y + real_y)
     metrics["gold_lr"] = _report(gold_y, list(lr.predict(gold_X)))
     metrics["gold_nb"] = _report(gold_y, list(nb.predict(gold_X)))
+    metrics["gold_new_lr"] = _report(gold_new_y, list(lr.predict(gold_new_X)))
+    metrics["gold_new_nb"] = _report(gold_new_y, list(nb.predict(gold_new_X)))
+    metrics["gold_all_lr"] = _report(gold_y + gold_new_y, list(lr.predict(gold_X + gold_new_X)))
 
     # --- language model + smoothing comparison (Units I-III)
     n_tr = int(0.85 * len(clean_tokens))
@@ -124,8 +138,9 @@ def train_all(n_per_class=700, seed=7, verbose=True):
     metrics["train_seconds"] = round(time.time() - t0, 1)
     METRICS_PATH.write_text(json.dumps(metrics, indent=1))
     if verbose:
-        print(f"[train] {len(rows)} examples | gold acc LR {metrics['gold_lr']['accuracy']:.3f} "
-              f"NB {metrics['gold_nb']['accuracy']:.3f} | template-holdout {metrics['template_holdout']['accuracy']:.3f} "
+        print(f"[train] {len(rows)} synthetic + {len(real)} real examples | gold acc LR {metrics['gold_lr']['accuracy']:.3f} "
+              f"NB {metrics['gold_nb']['accuracy']:.3f} | new batch LR {metrics['gold_new_lr']['accuracy']:.3f} "
+              f"NB {metrics['gold_new_nb']['accuracy']:.3f} | template-holdout {metrics['template_holdout']['accuracy']:.3f} "
               f"| random {metrics['random_split']['accuracy']:.3f} | {metrics['train_seconds']}s")
     return bundle, metrics
 

@@ -132,6 +132,12 @@ class Simulator:
         self._next_auto = end + self.rng.uniform(8, 15) * 60
         log(f"[sim] backfilled {self.e.counters['total']} complaints ({hours}h of history)")
 
+    async def run_live(self):
+        """Live mode: the engine clock is the wall clock and nothing synthetic is generated."""
+        while True:
+            self.e.vtime = time.time()
+            await asyncio.sleep(1.0)
+
     async def run(self):
         last = time.time()
         while True:

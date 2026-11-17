@@ -37,7 +37,7 @@
 <section id="page-dashboard" class="page active">
   <div class="kpis" id="kpis"></div>
   <div class="grid">
-    <div class="card map-card"><div class="card-h"><h2>Complaint hotspots <small>last hour · size = volume · colour = top category</small></h2><div class="legend" id="mapLegend"></div></div><div id="map"></div></div>
+    <div class="card map-card"><div class="card-h"><h2>Complaint hotspots <small>last hour · size = volume · colour = top category</small></h2><div class="legend" id="mapLegend"></div></div><label id="mapTransitWrap" class="muted" hidden style="padding:0 14px 6px"><input type="checkbox" id="mapTransit" checked> Show transit lines (Google)</label><div id="map"></div></div>
     <div class="card emerging"><div class="card-h"><h2>Emerging trends <small>burst detection</small></h2><span class="tag" id="calibTag" hidden>calibrating</span></div><div id="emergingList" class="list"></div></div>
     <div class="card timeline"><div class="card-h"><h2>Complaints over time <small>10-min buckets</small></h2></div><div class="chart-box"><canvas id="chTimeline"></canvas></div></div>
     <div class="card cats"><div class="card-h"><h2>Categories <small>last hour</small></h2></div><div class="donut-wrap"><div class="chart-box sm"><canvas id="chDonut"></canvas></div><div id="catLegend" class="cat-legend"></div></div></div>
@@ -69,6 +69,8 @@
       <button id="azRun" class="btn accent">Analyze</button>
       <button id="azSend" class="btn">Send to live stream</button>
       <label class="btn file">Upload CSV<input id="azCsv" type="file" accept=".csv" hidden></label>
+      <label class="noise" title="Share of words that get a typo before the text is analysed (uses the training-data noise generator)">Noise
+        <input id="azNoise" type="range" min="0" max="100" step="5" value="0"><output id="azNoiseVal">0%</output></label>
       <span class="muted" id="azStatus"></span>
     </div>
   </div>
