@@ -73,7 +73,17 @@ function renderEmerging(s) {
   if (!e.items.length) { $('#emergingList').innerHTML = '<div class="muted">No unusual surges right now. Try <b>Inject</b> to simulate an incident.</div>'; return; }
   $('#emergingList').innerHTML = e.items.map((r) => `<div class="item"><div class="main"><div class="t">${esc(r.label)}</div>
     <div class="m">${r.kind} · ${r.recent} in 30 min vs ~${r.expected} expected · z=${r.z}</div></div>
-    <div class="r"><div class="up">▲ ${r.growth_pct > 999 ? '999+' : r.growth_pct}%</div>${spark(r.spark, '#e66767')}</div></div>`).join('');
+    <div class="r"><div class="up" title="${esc(growthTip(r))}">▲ ${growthLabel(r)}</div>${spark(r.spark, '#e66767')}</div></div>`).join('');
+}
+
+// A percentage is only meaningful when the usual count is not tiny: "27 vs 2" is +1250 %, which reads as nonsense.
+// Small baseline (< 3 expected) -> show the extra complaints; otherwise the percentage, capped at 300%+.
+function growthLabel(r) {
+  if (r.expected < 3) return `+${Math.max(1, Math.round(r.recent - r.expected))} extra`;
+  return r.growth_pct > 300 ? '300%+' : `${r.growth_pct}%`;
+}
+function growthTip(r) {
+  return `${r.recent} complaints in the last 30 min against about ${r.expected} usually at this time (+${r.growth_pct}%)`;
 }
 
 function renderTimeline(s) {
