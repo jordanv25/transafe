@@ -6,7 +6,7 @@ let map, chTimeline, chDonut;
 
 export async function initDashboard() {
   map = await createMap($('#map'), S.meta.maps_key);
-  Chart.defaults.color = '#aab5c4'; Chart.defaults.borderColor = '#263041'; Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.color = '#b4b2aa'; Chart.defaults.borderColor = '#2d3036'; Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
 
   chTimeline = new Chart($('#chTimeline'), {
     type: 'bar', data: { labels: [], datasets: [] },

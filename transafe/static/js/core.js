@@ -27,7 +27,7 @@ export const sevPill = (level, score) => `<span class="pill ${level}" title="Sev
 export const catDot = (c) => `<i class="dot" style="background:${S.colors[c] || '#888'}"></i>`;
 export const catName = (c) => S.labels[c] || c;
 
-export function spark(vals, color = '#4cc9f0', w = 80, h = 22) {
+export function spark(vals, color = '#f0a830', w = 80, h = 22) {
   const max = Math.max(1, ...vals), step = w / Math.max(1, vals.length - 1);
   const pts = vals.map((v, i) => `${(i * step).toFixed(1)},${(h - 2 - (v / max) * (h - 4)).toFixed(1)}`).join(' ');
   return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline fill="none" stroke="${color}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" points="${pts}"/></svg>`;
